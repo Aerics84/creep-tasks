@@ -1,4 +1,4 @@
-// creep-tasks v1.3.0: github.com/bencbartlett/creep-tasks
+// creep-tasks v1.4.0: github.com/Aerics84/creep-tasks
 'use strict';
 
 // Universal reference properties
@@ -9,10 +9,10 @@ function derefRoomPosition(protoPos) {
     return new RoomPosition(protoPos.x, protoPos.y, protoPos.roomName);
 }
 function isEnergyStructure(structure) {
-    return structure.energy != undefined && structure.energyCapacity != undefined;
+    return structure.store.getCapacity(RESOURCE_ENERGY) != undefined && structure.store.getCapacity() == undefined;
 }
 function isStoreStructure(structure) {
-    return structure.store != undefined;
+    return structure.store != undefined && structure.store.getCapacity() != undefined;
 }
 
 /**
@@ -314,7 +314,7 @@ class TaskBuild extends Task {
         this.settings.workOffRoad = true;
     }
     isValidTask() {
-        return this.creep.carry.energy > 0;
+        return this.creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0;
     }
     isValidTarget() {
         return this.target && this.target.my && this.target.progress < this.target.progressTotal;
@@ -368,7 +368,7 @@ class TaskFortify extends Task {
         this.settings.workOffRoad = true;
     }
     isValidTask() {
-        return (this.creep.carry.energy > 0);
+        return (this.creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0);
     }
     isValidTarget() {
         let target = this.target;
@@ -440,7 +440,7 @@ class TaskGetBoosted extends Task {
         let partCount = (this.data.amount || this.creep.getActiveBodyparts(boostParts[this.data.resourceType]));
         if (this.target.mineralType == this.data.resourceType &&
             this.target.mineralAmount >= LAB_BOOST_MINERAL * partCount &&
-            this.target.energy >= LAB_BOOST_ENERGY * partCount) {
+            this.target.store.getUsedCapacity(RESOURCE_ENERGY) >= LAB_BOOST_ENERGY * partCount) {
             return this.target.boostCreep(this.creep, this.data.amount);
         }
         else {
@@ -474,10 +474,10 @@ function hasPos(obj) {
 class TaskGoTo extends Task {
     constructor(target, options = {}) {
         if (hasPos(target)) {
-            super(TaskGoTo.taskName, {ref: '', pos: target.pos}, options);
+            super(TaskGoTo.taskName, { ref: '', pos: target.pos }, options);
         }
         else {
-            super(TaskGoTo.taskName, {ref: '', pos: target}, options);
+            super(TaskGoTo.taskName, { ref: '', pos: target }, options);
         }
         // Settings
         this.settings.targetRange = 1;
@@ -516,7 +516,7 @@ TaskGoTo.taskName = 'goTo';
 
 class TaskGoToRoom extends Task {
     constructor(roomName, options = {}) {
-        super(TaskGoToRoom.taskName, {ref: '', pos: new RoomPosition(25, 25, roomName)}, options);
+        super(TaskGoToRoom.taskName, { ref: '', pos: new RoomPosition(25, 25, roomName) }, options);
         // Settings
         this.settings.targetRange = 24; // Target is almost always controller flag, so range of 2 is acceptable
     }
@@ -560,7 +560,7 @@ class TaskHarvest extends Task {
         super(TaskHarvest.taskName, target, options);
     }
     isValidTask() {
-        return _.sum(this.creep.carry) < this.creep.carryCapacity;
+        return this.creep.store.getUsedCapacity() < this.creep.store.getCapacity();
     }
     isValidTarget() {
         // if (this.target && (this.target instanceof Source ? this.target.energy > 0 : this.target.mineralAmount > 0)) {
@@ -629,7 +629,7 @@ class TaskPickup extends Task {
         this.settings.oneShot = true;
     }
     isValidTask() {
-        return _.sum(this.creep.carry) < this.creep.carryCapacity;
+        return this.creep.store.getUsedCapacity() < this.creep.store.getCapacity();
     }
     isValidTarget() {
         return this.target && this.target.amount > 0;
@@ -669,26 +669,26 @@ class TaskWithdraw extends Task {
     }
     isValidTask() {
         let amount = this.data.amount || 1;
-        return (_.sum(this.creep.carry) <= this.creep.carryCapacity - amount);
+        return this.creep.store.getUsedCapacity() <= this.creep.store.getCapacity() - amount;
     }
     isValidTarget() {
         let amount = this.data.amount || 1;
         let target = this.target;
         if (target instanceof Tombstone || isStoreStructure(target)) {
-            return (target.store[this.data.resourceType] || 0) >= amount;
+            return (target.store.getUsedCapacity(this.data.resourceType) || 0) >= amount;
         }
         else if (isEnergyStructure(target) && this.data.resourceType == RESOURCE_ENERGY) {
-            return target.energy >= amount;
+            return target.store.getUsedCapacity(RESOURCE_ENERGY) >= amount;
         }
         else {
             if (target instanceof StructureLab) {
-                return this.data.resourceType == target.mineralType && target.mineralAmount >= amount;
+                return this.data.resourceType == target.mineralType && target.store.getUsedCapacity(target.mineralType) >= amount;
             }
             else if (target instanceof StructureNuker) {
-                return this.data.resourceType == RESOURCE_GHODIUM && target.ghodium >= amount;
+                return this.data.resourceType == RESOURCE_GHODIUM && target.store.getUsedCapacity(RESOURCE_GHODIUM) >= amount;
             }
             else if (target instanceof StructurePowerSpawn) {
-                return this.data.resourceType == RESOURCE_POWER && target.power >= amount;
+                return this.data.resourceType == RESOURCE_POWER && target.store.getUsedCapacity(RESOURCE_POWER) >= amount;
             }
         }
         return false;
@@ -706,7 +706,7 @@ class TaskRepair extends Task {
         this.settings.targetRange = 3;
     }
     isValidTask() {
-        return this.creep.carry.energy > 0;
+        return this.creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0;
     }
     isValidTarget() {
         return this.target && this.target.hits < this.target.hitsMax;
@@ -770,33 +770,30 @@ class TaskTransfer extends Task {
     }
     isValidTask() {
         let amount = this.data.amount || 1;
-        let resourcesInCarry = this.creep.carry[this.data.resourceType] || 0;
+        let resourcesInCarry = this.creep.store.getUsedCapacity(this.data.resourceType) || 0;
         return resourcesInCarry >= amount;
     }
     isValidTarget() {
         let amount = this.data.amount || 1;
         let target = this.target;
-        if (target instanceof Creep) {
-            return _.sum(target.carry) <= target.carryCapacity - amount;
-        }
-        else if (isStoreStructure(target)) {
-            return _.sum(target.store) <= target.storeCapacity - amount;
+        if (target instanceof Creep || isStoreStructure(target)) {
+            return target.store.getUsedCapacity() <= target.store.getCapacity() - amount;
         }
         else if (isEnergyStructure(target) && this.data.resourceType == RESOURCE_ENERGY) {
-            return target.energy <= target.energyCapacity - amount;
+            return target.store.getUsedCapacity(RESOURCE_ENERGY) <= target.store.getCapacity(RESOURCE_ENERGY) - amount;
         }
         else {
             if (target instanceof StructureLab) {
                 return (target.mineralType == this.data.resourceType || !target.mineralType) &&
-                       target.mineralAmount <= target.mineralCapacity - amount;
+                    target.store.getUsedCapacity(resourceType) <= target.store.getCapacity(resourceType) - amount;
             }
             else if (target instanceof StructureNuker) {
                 return this.data.resourceType == RESOURCE_GHODIUM &&
-                       target.ghodium <= target.ghodiumCapacity - amount;
+                    target.store.getUsedCapacity(RESOURCE_GHODIUM) <= target.store.getCapacity(RESOURCE_GHODIUM) - amount;
             }
             else if (target instanceof StructurePowerSpawn) {
                 return this.data.resourceType == RESOURCE_POWER &&
-                       target.power <= target.powerCapacity - amount;
+                    target.store.getUsedCapacity(RESOURCE_POWER) <= target.store.getCapacity(RESOURCE_POWER) - amount;
             }
         }
         return false;
@@ -815,7 +812,7 @@ class TaskUpgrade extends Task {
         this.settings.workOffRoad = true;
     }
     isValidTask() {
-        return (this.creep.carry.energy > 0);
+        return (this.creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0);
     }
     isValidTarget() {
         return this.target && this.target.my;
@@ -830,10 +827,10 @@ TaskUpgrade.taskName = 'upgrade';
 class TaskDrop extends Task {
     constructor(target, resourceType = RESOURCE_ENERGY, amount = undefined, options = {}) {
         if (target instanceof RoomPosition) {
-            super(TaskDrop.taskName, {ref: '', pos: target}, options);
+            super(TaskDrop.taskName, { ref: '', pos: target }, options);
         }
         else {
-            super(TaskDrop.taskName, {ref: '', pos: target.pos}, options);
+            super(TaskDrop.taskName, { ref: '', pos: target.pos }, options);
         }
         // Settings
         this.settings.oneShot = true;
@@ -844,7 +841,7 @@ class TaskDrop extends Task {
     }
     isValidTask() {
         let amount = this.data.amount || 1;
-        let resourcesInCarry = this.creep.carry[this.data.resourceType] || 0;
+        let resourcesInCarry = this.creep.store.getUsedCapacity(this.data.resourceType) || 0;
         return resourcesInCarry >= amount;
     }
     isValidTarget() {
@@ -900,11 +897,11 @@ class TaskTransferAll extends Task {
     }
 
     isValidTask() {
-        for (let resourceType in this.creep.carry) {
+        for (let resourceType in this.creep.store) {
             if (this.data.skipEnergy && resourceType == RESOURCE_ENERGY) {
                 continue;
             }
-            let amountInCarry = this.creep.carry[resourceType] || 0;
+            let amountInCarry = this.creep.store.getUsedCapacity(resourceType) || 0;
             if (amountInCarry > 0) {
                 return true;
             }
@@ -913,15 +910,15 @@ class TaskTransferAll extends Task {
     }
 
     isValidTarget() {
-        return _.sum(this.target.store) < this.target.storeCapacity;
+        return this.target.store.getUsedCapacity() < this.target.store.getCapacity();
     }
 
     work() {
-        for (let resourceType in this.creep.carry) {
+        for (let resourceType in this.creep.store) {
             if (this.data.skipEnergy && resourceType == RESOURCE_ENERGY) {
                 continue;
             }
-            let amountInCarry = this.creep.carry[resourceType] || 0;
+            let amountInCarry = this.creep.store.getUsedCapacity(resourceType) || 0;
             if (amountInCarry > 0) {
                 return this.creep.transfer(this.target, resourceType);
             }
@@ -938,16 +935,16 @@ class TaskWithdrawAll extends Task {
     }
 
     isValidTask() {
-        return (_.sum(this.creep.carry) < this.creep.carryCapacity);
+        return this.creep.store.getUsedCapacity() < this.creep.store.getCapacity();
     }
 
     isValidTarget() {
-        return _.sum(this.target.store) > 0;
+        return this.target.store.getUsedCapacity() > 0;
     }
 
     work() {
         for (let resourceType in this.target.store) {
-            let amountInStore = this.target.store[resourceType] || 0;
+            let amountInStore = this.target.store.getUsedCapacity(resourceType) || 0;
             if (amountInStore > 0) {
                 return this.creep.withdraw(this.target, resourceType);
             }
@@ -1172,11 +1169,11 @@ Object.defineProperty(RoomPosition.prototype, 'neighbors', {
 });
 RoomPosition.prototype.isPassible = function (ignoreCreeps = false) {
     // Is terrain passable?
-    
+
     let terrain = Game.map.getRoomTerrain(this.roomName);
-    if (terrain.get(this.x,this.y) == TERRAIN_MASK_WALL) 
-      return false;
-    
+    if (terrain.get(this.x, this.y) == TERRAIN_MASK_WALL)
+        return false;
+
     if (this.isVisible) {
         // Are there creeps?
         if (ignoreCreeps == false && this.lookFor(LOOK_CREEPS).length > 0)
@@ -1184,9 +1181,9 @@ RoomPosition.prototype.isPassible = function (ignoreCreeps = false) {
         // Are there structures?
         let impassibleStructures = _.filter(this.lookFor(LOOK_STRUCTURES), function (s) {
             return this.structureType != STRUCTURE_ROAD &&
-                   s.structureType != STRUCTURE_CONTAINER &&
-                   !(s.structureType == STRUCTURE_RAMPART && (s.my ||
-                                                              s.isPublic));
+                s.structureType != STRUCTURE_CONTAINER &&
+                !(s.structureType == STRUCTURE_RAMPART && (s.my ||
+                    s.isPublic));
         });
         return impassibleStructures.length == 0;
     }
@@ -1235,7 +1232,7 @@ class Tasks {
     static fortify(target, options = {}) {
         return new TaskFortify(target, options);
     }
-
+    
     static getBoosted(target, boostType, amount = undefined, options = {}) {
         return new TaskGetBoosted(target, boostType, amount, options);
     }
